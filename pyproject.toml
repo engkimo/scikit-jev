@@ -1,0 +1,89 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "scikit-jev"
+version = "0.1.0.dev0"
+description = "Probability-preserving scikit-learn estimators for TypeSafe System One and Jev"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "scikit-jev contributors" }]
+keywords = ["jev", "system-one", "scikit-learn", "typesafe", "machine-learning"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "numpy>=1.23",
+    "scikit-learn>=1.6,<2",
+    "typesafe-sdk>=0.7.2,<0.8",
+]
+
+[project.optional-dependencies]
+test = [
+    "mypy>=1.13",
+    "packaging>=24",
+    "pandas>=2",
+    "pytest>=8",
+    "pytest-cov>=5",
+    "ruff>=0.9",
+]
+baselines = [
+    "system-one-adapter>=0.2.1,<0.3",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/scikit_jev"]
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+    "/.github",
+    "/AGENTS.md",
+    "/MEMORY.md",
+    "/uv.lock",
+]
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-markers"
+testpaths = ["tests"]
+markers = [
+    "live: opt-in tests that call a configured remote API",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["scikit_jev"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["B", "E", "F", "I", "UP"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.10"
+files = ["src/scikit_jev"]
+check_untyped_defs = true
+disallow_untyped_defs = true
+ignore_missing_imports = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unreachable = true
+warn_unused_ignores = true
