@@ -7,6 +7,8 @@ name = "scikit-jev"
 version = "0.1.0.dev0"
 description = "Probability-preserving scikit-learn estimators for TypeSafe System One and Jev"
 readme = "README.md"
+license = "BSD-3-Clause"
+license-files = ["LICENSE"]
 requires-python = ">=3.10"
 authors = [{ name = "scikit-jev contributors" }]
 keywords = ["jev", "system-one", "scikit-learn", "typesafe", "machine-learning"]
@@ -27,6 +29,10 @@ dependencies = [
     "scikit-learn>=1.6,<2",
     "typesafe-sdk>=0.7.2,<0.8",
 ]
+
+[project.urls]
+Repository = "https://github.com/engkimo/scikit-jev"
+Issues = "https://github.com/engkimo/scikit-jev/issues"
 
 [project.optional-dependencies]
 test = [

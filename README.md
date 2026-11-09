@@ -1,6 +1,6 @@
 # scikit-jev
 
-> Status: functional MVP, 2026-10-06
+> Status: pre-alpha functional MVP, 2026-11-09
 
 `scikit-jev` is a scikit-learn integration for TypeSafe System One and Jev. It
 turns typed, probabilistic answers about text or structured JSON into stable
@@ -23,6 +23,12 @@ same execution and validation layer:
 - `JevTransformer`
 
 ## Quickstart
+
+Install from GitHub (the package is not yet published to PyPI):
+
+```console
+pip install "scikit-jev @ git+https://github.com/engkimo/scikit-jev.git"
+```
 
 Install the current source checkout and its test dependencies with:
 
@@ -120,3 +126,19 @@ already demonstrates the underlying pattern: one request per state, all question
 packed into that request, probability-preserving feature encodings, and a
 classical model downstream. `scikit-jev` turns that pattern into reusable,
 testable sklearn estimators.
+
+## Related projects
+
+[`sklearn-decision`](https://github.com/jaketimothy/sklearn-decision) also provides
+decision-model estimators and question-derived features for sklearn, with local
+models, calibration, and caching. [`tab-jev`](https://github.com/edamame-labs/tab-jev)
+combines Jev judgments with tabular predictors, while
+[`jevframe`](https://github.com/ktaletsk/jevframe) adds typed row evaluation to
+pandas and Polars. See the [dated landscape review](docs/landscape.md) for scope
+and evidence. No performance comparison against these projects has been run.
+
+## License
+
+BSD-3-Clause. See [LICENSE](LICENSE). This is an independent community project;
+the software license does not grant access to the hosted TypeSafe service or
+rights to third-party models or trademarks.

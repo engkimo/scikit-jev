@@ -1,6 +1,6 @@
 # Project memory: scikit-jev
 
-Last updated: 2026-10-06
+Last updated: 2026-11-09
 
 ## Objective
 
@@ -94,8 +94,22 @@ As of 2026-10-06, 155 deterministic tests pass without network access. Wheel and
 sdist builds succeed. Operational Phase 4 work remains deliberately deferred:
 bounded concurrency, a System One Adapter backend, an explicit cache decision,
 and partial-failure collection. Public-release work also still requires live
-contract smoke tests, final documentation, a license, import/package-name and
+contract smoke tests, final documentation, import/package-name and
 trademark sign-off, and full clean-environment compatibility-matrix execution.
+
+## Public-source publication and landscape
+
+- The user authorized adding a license and making the GitHub repository public
+  on 2026-11-09. BSD-3-Clause was selected, matching the sklearn ecosystem.
+- GitHub source publication is separate from a stable v0.1 or PyPI release;
+  the package remains pre-alpha and has not been uploaded to PyPI.
+- The 2026-11-09 review found `jaketimothy/sklearn-decision`, a direct overlap:
+  question featurizer plus Noul/Choice classifiers and Score regressor, Jev and
+  local backends, calibration, and caching. It was created on 2026-09-26 and
+  missed by the original review. Do not claim the category is unoccupied.
+- scikit-llm main still has no Jev/TypeSafe/System One integration in the
+  inspected source; latest PyPI release is 1.4.3. Adjacent projects include
+  tab-jev and jevframe. See `docs/landscape.md` for primary-source links.
 
 Update this file when a durable design decision changes. Do not use it as a
 changelog or store secrets, temporary debugging notes, or credentials here.

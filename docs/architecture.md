@@ -406,7 +406,7 @@ These are release-blocking invariants, not preferences:
 
 ## 14. Decisions still requiring explicit sign-off
 
-1. Project license.
+1. Project license: resolved as BSD-3-Clause on 2026-11-09.
 2. Final import name (`scikit_jev` is proposed).
 3. Exact cache API and persistence warning.
 4. Whether a public v0.1 includes concurrency or keeps it experimental.
