@@ -1,7 +1,7 @@
 # scikit-jev architecture
 
-Status: functional MVP implemented; operational hardening deferred
-Date: 2026-10-06
+Status: functional MVP and contract corrections implemented; operational hardening deferred
+Updated: 2026-11-10
 SDK baseline: `typesafe-sdk>=0.7.2,<0.8`
 
 ## 1. Product thesis
@@ -22,9 +22,10 @@ X (states) ──> state conversion ──> System One execution ──> respons
                                            Transformer     Clf / Regr     + usage
 ```
 
-This definition matters strategically. A future Jev backend in `scikit-llm`
-could reproduce API connectivity, but it would not replace strict feature-schema,
-probability, sklearn-contract, cost, and failure semantics.
+The workflow itself is shared with `sklearn-decision` and adjacent libraries.
+The selected direction is to test the value of explicit feature-schema,
+probability, sklearn-contract, request-accounting, and failure semantics. These
+contracts are a product hypothesis, not evidence of adoption or superior accuracy.
 
 ## 2. Ground truth from the official API
 
@@ -56,7 +57,8 @@ mean/spread or full-distribution features, and a classical model downstream.
 
 ### Goals
 
-1. Preserve Jev probabilities and declared class/rubric order.
+1. Preserve Jev probabilities and declared feature/rubric order; align classifier
+   probability columns with sorted sklearn class labels.
 2. Make one System One call per sample and pack every question for that sample.
 3. Behave predictably under `clone`, `Pipeline`, CV, `GridSearchCV`, joblib, and
    serialization.
@@ -133,9 +135,11 @@ TypeSafeBackend(
 )
 ```
 
-`model=None` deliberately inherits the official SDK configuration. Production
-examples should pin a concrete model version rather than `jev-latest`, because an
-alias can move. Every rich result records the resolved `response.model`.
+`model=None` deliberately inherits the official SDK configuration. Use a concrete
+request model only when the selected service documents that it accepts that ID.
+Aliases such as `jev-latest` can move. Every rich result records the resolved
+`response.model`, but recording that value neither proves it is requestable nor
+guarantees replay. Live fixed-version support remains unverified.
 
 All constructor parameters are assigned verbatim. Validation, copying, client
 creation, and network access happen later so sklearn cloning remains valid.
@@ -193,11 +197,18 @@ readable.
 
 Task estimators use these contracts:
 
-- `JevNoulClassifier.classes_ == [negative_label, positive_label]` and
-  `predict_proba` returns `[1-p_true, p_true]`. `p_true >= threshold` is positive.
-- `JevChoiceClassifier.classes_` follows declared criteria order.
-  `predict_proba` is realigned to that order. The returned `choice` must agree with
-  an argmax, allowing a reported tie; otherwise validation fails.
+- Both classifiers sort `classes_` numerically or lexicographically and align
+  `predict_proba` and `evaluate().values` with it. Noul labels must be distinct,
+  reflexive, mutually sortable scalar values; incompatible mixed label types are
+  rejected instead of silently converted to strings.
+- Noul maps `p_true` to the configured positive label's column and its complement
+  to the negative label's column. `p_true >= threshold` is positive regardless of
+  where that label sorts. Boolean defaults still produce `[1-p_true, p_true]`.
+- Choice requests, canonical answer distributions, and Transformer features keep
+  declared criteria order; only classifier output is remapped to sorted classes.
+  The returned `choice` must agree with an argmax, allowing a reported tie;
+  otherwise validation fails. Classifier prediction breaks ties using the first
+  sorted class.
 - `JevScoreRegressor.predict` returns the reported expected score as `float64`.
   It must agree with the weighted distribution within tolerance.
 
@@ -275,9 +286,16 @@ For every inference operation:
 1. Materialize and validate the sample sequence.
 2. Convert each sample to one JSON-compatible state.
 3. Send all declared questions for that state in one request.
-4. Preserve input ordering, even when requests later run concurrently.
-5. Validate and canonicalize the complete response.
-6. Project the canonical batch to sklearn arrays or a rich result.
+4. Validate and canonicalize that response before sending the next state. Stop on
+   failure; cleanup runs once and does not replace the primary inference or
+   response failure.
+5. Preserve input ordering, even when requests later run concurrently.
+6. Project the canonical batch to sklearn arrays or a rich result. Raw SDK/HTTP
+   responses never become batch-result entries.
+
+One call per sample means one logical `system_one` invocation for each evaluated
+row, not one HTTP attempt or guaranteed billable event. SDK retries may multiply
+HTTP attempts. A fail-fast operation can evaluate fewer rows than were supplied.
 
 The API uses `max_concurrency`, not `batch_size`, because the service has no
 multi-state batch request. The initial default is one. A later thread-based
@@ -293,7 +311,10 @@ inside sklearn methods.
 The SDK validates Pydantic structure but does not fully enforce the estimator
 contract. The common normalizer additionally verifies:
 
-1. Expected and returned question IDs are an exact match.
+1. Expected and returned question IDs are an exact match. When a response exposes
+   raw HTTP metadata, inspect raw answer IDs as well as decoded IDs: SDK forward
+   compatibility can otherwise hide unknown answer types. Directly constructed
+   SDK models and structural clients without raw metadata use decoded IDs only.
 2. Every answer type matches its question type.
 3. Choice probability keys exactly match criteria keys.
 4. Score probability and legend keys exactly match rubric levels.
@@ -304,7 +325,7 @@ contract. The common normalizer additionally verifies:
 9. Choice contains 2–255 alternatives and Score contains 2–10 levels.
 10. Reported Choice/Score scalar answers agree with their distributions.
 
-Proposed exceptions:
+Exceptions:
 
 - `JevConfigurationError`: invalid question, label, state-builder, or feature
   configuration.
@@ -315,9 +336,34 @@ Proposed exceptions:
 - `JevBatchError`: future collect-mode error containing safe per-sample failure
   records.
 
-Exceptions never include raw input states, credentials, or full provider bodies.
+Ordinary library error messages never include raw input states, credentials, or
+full provider bodies. Response errors include safe declared IDs, fixed field
+descriptions, and unexpected-ID counts, not returned arbitrary keys or type
+values. Engine response failures are raised outside validation/provider/cleanup
+handlers so their `__cause__` and `__context__` do not retain those exceptions.
 The first release is fail-fast. No random choice and no numeric imputation are
 allowed.
+
+The current sum and scalar-agreement tolerances are `1e-6`. This rejects a
+synthetic `[0.33, 0.33, 0.33]` distribution. Whether such quantized outputs should
+be accepted from a real backend needs separate compatibility evidence and an
+explicit normalization policy; broader live compatibility is not assumed.
+
+Offline evidence for the 2026-11-10 corrections:
+
+| Contract | Evidence in `tests/test_contract_regressions.py` |
+| --- | --- |
+| Sorted classifier columns with unchanged feature/canonical order | `test_choice_sorted_classes_work_with_log_loss_and_preserve_feature_order` also exercises standard frozen-classifier calibration |
+| Noul positive-label orientation survives sorting | `test_noul_sorted_columns_keep_positive_threshold_orientation` covers strings, numbers, and booleans |
+| Choice ties use sorted classes without changing the request | `test_choice_ties_follow_sorted_classes_without_reordering_the_request` |
+| Invalid responses stop later calls and clients close once | `test_invalid_first_response_stops_before_later_rows_and_closes_once` covers all four estimators, including cleanup failure |
+| Arbitrary response values do not enter ordinary errors | `test_response_values_do_not_enter_ordinary_errors` checks messages, tracebacks, chains, and pickles |
+| SDK decoding cannot hide extra raw answer IDs | `test_sdk_raw_answer_ids_are_checked_even_if_decoding_drops_an_answer` |
+| Raw decoding errors do not retain private diagnostics | `test_raw_decoder_failure_drops_private_diagnostics_and_stops` |
+
+These are synthetic contract tests, not task-accuracy benchmarks or measurements
+of real provider failure rates. Existing validation tests cover missing/extra
+probability keys, finite ranges, sums, scalar agreement, and unknown usage.
 
 ## 10. Usage, caching, and privacy
 
@@ -336,11 +382,17 @@ Caching is opt-in because both sides are hazardous:
 Before the first public release, an ADR must define a cache key containing the
 normalized state, normalized questions, explicit model, encoding version, and
 backend identity. Persistent caching must require an explicit path, warn that it
-contains sensitive material, and recommend pinned model versions. There is no
+contains sensitive material, and recommend requestable pinned model versions
+where supported. Alias invalidation remains necessary otherwise. There is no
 implicit global cache.
 
 The README and API docs must explicitly state that states are sent to the selected
 remote backend. Debug HTTP logging remains off by default.
+The library does not sanitize third-party logging, custom-client side effects, or
+traceback tools that explicitly dump frame locals. SDK decoding may log unknown
+answer names and types before the wrapper can validate the response. The tested
+privacy boundary covers ordinary library exception rendering/serialization and
+retained canonical results, not process-wide information-flow guarantees.
 
 ## 11. sklearn contract
 
@@ -395,8 +447,10 @@ TypeSafe SDK ----------------> TypeSafe backend only
 
 These are release-blocking invariants, not preferences:
 
-- one state plus all its questions equals one backend call;
-- feature and probability columns are declaration-ordered;
+- each evaluated state plus all its questions equals one logical backend call;
+- Transformer feature and canonical probability columns are declaration-ordered;
+- classifier probability columns follow sorted `classes_` with explicit remapping;
+- sequential validation finishes before sending the next state;
 - no network call in `__init__`, `fit`, `clone`, repr, or parameter inspection;
 - no credential in estimator state;
 - no invented fallback output;
@@ -406,7 +460,8 @@ These are release-blocking invariants, not preferences:
 
 ## 14. Decisions still requiring explicit sign-off
 
-1. Project license: resolved as BSD-3-Clause on 2026-11-09.
+1. Project license: MIT as of 2026-11-10, replacing the BSD-3-Clause choice used
+   for the initial 2026-11-09 source publication.
 2. Final import name (`scikit_jev` is proposed).
 3. Exact cache API and persistence warning.
 4. Whether a public v0.1 includes concurrency or keeps it experimental.

@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from typesafe_sdk import JSONContent, SystemOneResponse
+from typesafe_sdk import JSONContent
 
+from scikit_jev._results import CanonicalResponse
+from scikit_jev._validation import validate_questions, validate_response
 from scikit_jev.backends import QuestionMapping, SystemOneBackend, TypeSafeBackend
-from scikit_jev.exceptions import JevConfigurationError, JevInferenceError
+from scikit_jev.exceptions import JevConfigurationError, JevInferenceError, JevResponseError
 
 
 def execute_system_one(
@@ -16,13 +18,15 @@ def execute_system_one(
     *,
     backend: SystemOneBackend | None = None,
     model: str | None = None,
-) -> tuple[SystemOneResponse, ...]:
-    """Evaluate normalized states sequentially and preserve their input order.
+) -> tuple[CanonicalResponse, ...]:
+    """Evaluate and validate each state before sending the next state.
 
-    Exactly one ``system_one`` call is made for each state.  Every call receives
+    At most one ``system_one`` call is made for each state. Every call receives
     the complete question mapping, so adding questions does not multiply the
     number of remote requests.  The client is created once for the operation and
-    always closed by its backend.
+    always closed by its backend. A provider or response-validation failure
+    stops later requests, and a cleanup failure never masks that first failure.
+    This counts logical client calls; SDK retries may cause more HTTP attempts.
 
     Provider exceptions are replaced by a safe ``JevInferenceError`` containing
     only the sample index and declared question IDs.  The original exception is
@@ -35,10 +39,11 @@ def execute_system_one(
         return ()
 
     selected_backend = TypeSafeBackend() if backend is None else backend
+    specs = validate_questions(questions)
     question_ids = tuple(questions)
-    responses: list[SystemOneResponse] = []
+    responses: list[CanonicalResponse] = []
     current_index = 0
-    failure: JevInferenceError | None = None
+    failure: JevInferenceError | JevResponseError | None = None
 
     try:
         with selected_backend.open_client() as client:
@@ -52,17 +57,24 @@ def execute_system_one(
                     # ``__context__``.
                     failure = JevInferenceError(current_index, question_ids)
                     break
-                responses.append(response)
+                try:
+                    canonical = validate_response(response, specs)
+                except JevResponseError as error:
+                    failure = JevResponseError(f"Invalid System One response for sample {current_index}: {error}")
+                    break
+                responses.append(canonical)
     except JevConfigurationError:
-        raise
+        if failure is None:
+            raise
     except Exception:
         # Client creation and cleanup are operation-level failures.  Index zero
         # identifies the first unevaluated sample during setup; after execution
         # it identifies the last sample whose operation could not be completed.
-        failure = JevInferenceError(current_index, question_ids)
+        if failure is None:
+            failure = JevInferenceError(current_index, question_ids)
 
-    # This raise must stay outside every provider-exception handler so Python
-    # does not attach the original exception as an implicit ``__context__``.
+    # Stay outside provider and validation handlers: even a suppressed context
+    # could retain untrusted response objects or cleanup diagnostics.
     if failure is not None:
         raise failure
 

@@ -1,6 +1,6 @@
 # Project memory: scikit-jev
 
-Last updated: 2026-11-09
+Last updated: 2026-11-10
 
 ## Objective
 
@@ -25,6 +25,11 @@ predictions and feature matrices.
 - Provider failures are replaced with coordinate-only `JevInferenceError`
   objects. Original provider exceptions are neither stored nor chained because
   their messages, response bodies, and tracebacks may contain private data.
+- Every sequential response is canonicalized and validated before the next row
+  is sent. Validation failures stop later calls and survive cleanup failures.
+  Raw answer IDs are inspected when SDK HTTP metadata exists, without retaining
+  raw HTTP responses in results. These are logical-call contracts; SDK retries
+  can create multiple HTTP attempts.
 - API keys and live clients must not appear in estimator parameters, reprs,
   exceptions, logs, or pickles. Authentication is resolved lazily from the
   official SDK environment configuration.
@@ -54,10 +59,12 @@ predictions and feature matrices.
 ## Required invariants
 
 - Exact question-ID and answer-type matching.
-- Declaration-ordered Choice and Score probability columns.
+- Declaration-ordered Transformer and canonical Choice/Score probability columns;
+  classifier columns are explicitly remapped to sorted `classes_`.
 - Finite probabilities in `[0, 1]` with a valid sum.
-- Noul: one probability feature; classifier probability order is
-  `[negative, positive]`.
+- Noul: one probability feature; classifier columns follow sorted labels and the
+  configured positive label retains its threshold orientation even if it sorts
+  first. Default Boolean labels still yield `[negative, positive]`.
 - Choice: full declared label distribution.
 - Score: full distribution by default, with expected and expected-plus-standard-
   deviation encodings available.
@@ -90,8 +97,13 @@ gate:
 - public exports, type marker, fake-backend pipeline integration, cloning,
   pickling, and modern sklearn estimator checks.
 
-As of 2026-10-06, 155 deterministic tests pass without network access. Wheel and
-sdist builds succeed. Operational Phase 4 work remains deliberately deferred:
+The contract-correction and offline-demo milestone on 2026-11-10 has 181 tests passing
+without network access on Python 3.12.8 / sklearn 1.9.1 / SDK 0.7.2, Python
+3.10.14 / sklearn 1.6.0 / SDK 0.7.5, and Python 3.14.3 / sklearn 1.9.1 / SDK 0.7.5.
+Classifier sorting, sequential validation, raw SDK ID checks, and
+response-error sanitization are implemented locally with regression tests.
+Wheel and sdist builds are part of the publication gate. Operational Phase 4 work
+remains deferred:
 bounded concurrency, a System One Adapter backend, an explicit cache decision,
 and partial-failure collection. Public-release work also still requires live
 contract smoke tests, final documentation, import/package-name and
@@ -101,6 +113,10 @@ trademark sign-off, and full clean-environment compatibility-matrix execution.
 
 - The user authorized adding a license and making the GitHub repository public
   on 2026-11-09. BSD-3-Clause was selected, matching the sklearn ecosystem.
+- On 2026-11-10, the user requested a simpler permissive license (MIT/Apache were
+  suggested) and authorized external publication. MIT was selected for its short
+  terms; LICENSE, package metadata, README, and architecture are aligned. Earlier
+  published revisions retain their historical BSD-3-Clause license.
 - GitHub source publication is separate from a stable v0.1 or PyPI release;
   the package remains pre-alpha and has not been uploaded to PyPI.
 - The 2026-11-09 review found `jaketimothy/sklearn-decision`, a direct overlap:
@@ -110,6 +126,44 @@ trademark sign-off, and full clean-environment compatibility-matrix execution.
 - scikit-llm main still has no Jev/TypeSafe/System One integration in the
   inspected source; latest PyPI release is 1.4.3. Adjacent projects include
   tab-jev and jevframe. See `docs/landscape.md` for primary-source links.
+
+## Selected next investment
+
+- On 2026-11-09, the user selected the response-contract, evaluation-correctness,
+  and reproducible-execution direction after reviewing sklearn-decision, then
+  requested a concrete plan followed by wider promotion. The visibility ambition
+  is 3,000 GitHub stars; this is a goal, not an adoption metric or forecast.
+- The next-cycle plan in `docs/implementation-plan.md` takes priority over the
+  historical Phase 4 feature backlog: correct known contracts, consolidate offline
+  evidence, make a useful runnable demo, prepare a preview, then distribute and
+  evaluate actual use. The initial contract corrections are implemented;
+  a reusable demo and wider release/distribution work remain next.
+- Classifier sorting intentionally changes the earlier pre-alpha contract.
+  Transformer/canonical declaration order is preserved, while classifier outputs
+  follow sorted labels. Choice ties now use the first sorted class. Refit older
+  classifiers and align consumers to `classes_`.
+- Keep hosted-model rounding and requestable fixed-version IDs as unresolved
+  compatibility questions. A recorded resolved version alone does not guarantee
+  replay, and fake tests alone do not establish semantic accuracy.
+- No broad local-model/encoder feature race is planned. Continue independently
+  only if users value the focused contracts; shared test assets and upstream
+  contributions remain alternatives. Live inference remains opt-in and outside
+  the current scope.
+- On 2026-11-10, the user selected X, English articles, and overseas communities
+  in addition to the GitHub/Japanese launch. Prepare concrete publication copy
+  for user review before publishing. Specific account handles and destinations
+  are not yet established; this is not authorization to publish unreviewed copy.
+- The tested information boundary covers ordinary package error messages,
+  formatted exception chains/pickles, and canonical results. Third-party SDK
+  logging and frame-local traceback dumps are outside that guarantee.
+- A runnable credential-free example now exists at `examples/offline_workflow.py`
+  with a no-network integration test. It uses hand-authored synthetic responses,
+  not a semantic model or an accuracy benchmark, and exposes named mixed features,
+  a classical head, logical calls, and unknown token counts.
+- Initial English/Japanese X drafts and an English article brief are recorded in
+  `docs/implementation-plan.md` for review. None is approved or posted; full
+  articles, demo video, concrete publication accounts, and public preview remain
+  outstanding.
 
 Update this file when a durable design decision changes. Do not use it as a
 changelog or store secrets, temporary debugging notes, or credentials here.

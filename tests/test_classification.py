@@ -113,14 +113,15 @@ def test_noul_fit_is_network_free_and_binds_declared_class_order() -> None:
     assert tuple(classifier.questions_) == ("target",)
 
 
-def test_choice_fit_is_network_free_and_uses_criteria_order() -> None:
+def test_choice_fit_is_network_free_and_sorts_classes() -> None:
     backend = RecordingBackend(RecordingClientFactory([]))
     classifier = JevChoiceClassifier(_choice_question(), backend=backend)
 
     classifier.fit(["first", "second"], y=["happy", "calm"])
 
     assert backend.open_count == 0
-    assert classifier.classes_.tolist() == ["calm", "angry", "happy"]
+    assert classifier.classes_.tolist() == ["angry", "calm", "happy"]
+    assert classifier.question_specs_[0].labels == ("calm", "angry", "happy")
     assert classifier.question_specs_[0].kind == "choice"
 
 
@@ -158,6 +159,9 @@ def test_noul_rejects_invalid_threshold_at_fit(threshold: Any) -> None:
     [
         ("same", "same", "distinct"),
         (["no"], ["yes"], "hashable scalar"),
+        (("no",), ("yes",), "hashable scalar"),
+        (float("nan"), 1.0, "reflexive"),
+        ("no", 1, "mutually sortable"),
     ],
 )
 def test_noul_rejects_invalid_class_labels(negative_label: Any, positive_label: Any, message: str) -> None:
@@ -216,7 +220,7 @@ def test_noul_probability_prediction_threshold_and_metadata() -> None:
     assert all(client.close_count == 1 for client in clients)
 
 
-def test_choice_probabilities_and_prediction_follow_declaration_order() -> None:
+def test_choice_probabilities_and_prediction_follow_sorted_classes() -> None:
     batch = [
         _choice_response("angry", {"happy": 0.1, "angry": 0.7, "calm": 0.2}),
         _choice_response("happy", {"happy": 0.6, "angry": 0.1, "calm": 0.3}),
@@ -229,16 +233,16 @@ def test_choice_probabilities_and_prediction_follow_declaration_order() -> None:
     probabilities = classifier.predict_proba(["first", "second"])
     predictions = classifier.predict(["first", "second"])
 
-    expected = np.asarray([[0.2, 0.7, 0.1], [0.3, 0.1, 0.6]])
+    expected = np.asarray([[0.7, 0.2, 0.1], [0.1, 0.3, 0.6]])
     np.testing.assert_allclose(result.values, expected)
     np.testing.assert_allclose(probabilities, expected)
     np.testing.assert_array_equal(predictions, ["angry", "happy"])
-    assert classifier.classes_.tolist() == ["calm", "angry", "happy"]
+    assert classifier.classes_.tolist() == ["angry", "calm", "happy"]
     assert tuple(vars(classifier)) == fitted_attributes
     assert all(len(client.calls) == 2 for client in clients)
 
 
-def test_choice_prediction_uses_declaration_first_argmax_for_tie() -> None:
+def test_choice_prediction_uses_sorted_first_argmax_for_tie() -> None:
     question = Choice(criteria={"first": None, "second": None})
     response = FakeSystemOneResponse(
         model="jev-test",

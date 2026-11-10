@@ -15,9 +15,9 @@ from typesafe_sdk import JSONContent, Question
 from scikit_jev._engine import execute_system_one
 from scikit_jev._results import CanonicalResponse
 from scikit_jev._states import build_states
-from scikit_jev._validation import QuestionSpec, validate_questions, validate_response
+from scikit_jev._validation import QuestionSpec, validate_questions
 from scikit_jev.backends import QuestionMapping, SystemOneBackend, TypeSafeBackend
-from scikit_jev.exceptions import JevConfigurationError, JevResponseError
+from scikit_jev.exceptions import JevConfigurationError
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,19 +129,12 @@ class _BaseJevEstimator(BaseEstimator):
     def _execute_canonical_states(self, states: tuple[JSONContent, ...]) -> tuple[CanonicalResponse, ...]:
         """Execute states that were already normalized by the common fit path."""
 
-        raw_responses = execute_system_one(
+        return execute_system_one(
             states,
             self.questions_,
             backend=self.backend_,
             model=self.model,
         )
-        canonical_responses: list[CanonicalResponse] = []
-        for sample_index, response in enumerate(raw_responses):
-            try:
-                canonical_responses.append(validate_response(response, self.question_specs_))
-            except JevResponseError as error:
-                raise JevResponseError(f"Invalid System One response for sample {sample_index}: {error}") from error
-        return tuple(canonical_responses)
 
     def _reset_fitted_state(self) -> None:
         """Remove every sklearn-style fitted attribute before a refit attempt."""

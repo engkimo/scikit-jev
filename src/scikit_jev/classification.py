@@ -54,13 +54,15 @@ class JevNoulClassifier(ClassifierMixin, _BaseJevEstimator):
         threshold = _validate_threshold(self.threshold)
         classes = _validate_binary_labels(self.negative_label, self.positive_label)
         _validate_classification_target(y, tuple(classes))
+        positive_class_index = next(i for i, label in enumerate(classes) if _labels_equal(label, self.positive_label))
         self._commit_fit(binding)
         self.threshold_ = threshold
         self.classes_ = classes
+        self._positive_class_index_ = positive_class_index
         return self
 
     def evaluate(self, X: Any) -> JevBatchResult:
-        """Return ``[p_false, p_true]`` values and metadata from one inference."""
+        """Return sorted-class probabilities and metadata from one inference."""
 
         responses = self._evaluate_canonical(X)
         positive = np.fromiter(
@@ -69,12 +71,12 @@ class JevNoulClassifier(ClassifierMixin, _BaseJevEstimator):
             count=len(responses),
         )
         values = np.empty((len(responses), 2), dtype=np.float64)
-        values[:, 0] = 1.0 - positive
-        values[:, 1] = positive
+        values[:, 1 - self._positive_class_index_] = 1.0 - positive
+        values[:, self._positive_class_index_] = positive
         return JevBatchResult(values=values, responses=responses)
 
     def predict_proba(self, X: Any) -> NDArray[np.float64]:
-        """Return negative and positive probabilities in ``classes_`` order."""
+        """Return probabilities in sorted ``classes_`` order."""
 
         return self.evaluate(X).values
 
@@ -82,7 +84,11 @@ class JevNoulClassifier(ClassifierMixin, _BaseJevEstimator):
         """Return the positive label when ``p_true >= threshold``."""
 
         probabilities = self.evaluate(X).values
-        indices = (probabilities[:, 1] >= self.threshold_).astype(np.intp, copy=False)
+        indices = np.where(
+            probabilities[:, self._positive_class_index_] >= self.threshold_,
+            self._positive_class_index_,
+            1 - self._positive_class_index_,
+        )
         return self.classes_[indices]
 
     def __sklearn_tags__(self) -> Any:
@@ -94,7 +100,7 @@ class JevNoulClassifier(ClassifierMixin, _BaseJevEstimator):
 
 
 class JevChoiceClassifier(ClassifierMixin, _BaseJevEstimator):
-    """Multiclass classifier preserving a Choice question's declared order."""
+    """Multiclass classifier aligning Choice probabilities to sorted classes."""
 
     def __init__(
         self,
@@ -119,20 +125,22 @@ class JevChoiceClassifier(ClassifierMixin, _BaseJevEstimator):
 
         binding = self._prepare_fit(X, y)
         spec = _require_question_kind(binding, "choice", "JevChoiceClassifier")
-        classes = np.asarray(spec.labels)
+        classes = np.sort(np.asarray(spec.labels))
+        class_indices = np.asarray([spec.labels.index(label) for label in classes], dtype=np.intp)
         _validate_classification_target(y, spec.labels)
         self._commit_fit(binding)
         self.classes_ = classes
+        self._class_indices_ = class_indices
         return self
 
     def evaluate(self, X: Any) -> JevBatchResult:
-        """Return declared-order class probabilities and inference metadata."""
+        """Return sorted-class probabilities and declaration-ordered metadata."""
 
         responses = self._evaluate_canonical(X)
         values = np.empty((len(responses), len(self.classes_)), dtype=np.float64)
         for row_index, response in enumerate(responses):
             answer = _choice_answer(response.answer_for(self.question_id))
-            values[row_index] = answer.probabilities
+            values[row_index] = np.asarray(answer.probabilities)[self._class_indices_]
         return JevBatchResult(values=values, responses=responses)
 
     def predict_proba(self, X: Any) -> NDArray[np.float64]:
@@ -141,7 +149,7 @@ class JevChoiceClassifier(ClassifierMixin, _BaseJevEstimator):
         return self.evaluate(X).values
 
     def predict(self, X: Any) -> NDArray[Any]:
-        """Return the declaration-first argmax class for every sample."""
+        """Return the first argmax in sorted class order for every sample."""
 
         probabilities = self.evaluate(X).values
         indices = np.argmax(probabilities, axis=1)
@@ -175,16 +183,22 @@ def _validate_binary_labels(negative_label: Any, positive_label: Any) -> NDArray
             hash(label)
         except (TypeError, ValueError):
             raise JevConfigurationError("class labels must be hashable scalar values") from None
+        if np.ndim(label) != 0:
+            raise JevConfigurationError("class labels must be hashable scalar values")
+        if not _labels_equal(label, label):
+            raise JevConfigurationError("class labels must be reflexive scalar values")
     if _labels_equal(negative_label, positive_label):
         raise JevConfigurationError("negative_label and positive_label must be distinct")
     if type(negative_label) is type(positive_label):
         classes = np.asarray((negative_label, positive_label))
-        if classes.ndim == 1:
-            return classes
-    classes = np.empty(2, dtype=object)
-    classes[0] = negative_label
-    classes[1] = positive_label
-    return classes
+    else:
+        classes = np.empty(2, dtype=object)
+        classes[0] = negative_label
+        classes[1] = positive_label
+    try:
+        return np.sort(classes)
+    except (TypeError, ValueError):
+        raise JevConfigurationError("class labels must be mutually sortable scalar values") from None
 
 
 def _validate_classification_target(y: Any, classes: tuple[Any, ...]) -> None:

@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from numbers import Integral, Real
 from typing import TYPE_CHECKING, Any, Literal, TypeAlias
 
+from typesafe_sdk import TypeSafeError
+
 from ._results import (
     CanonicalAnswer,
     CanonicalChoiceAnswer,
@@ -118,20 +120,9 @@ def validate_response(
     if len(expected_ids) != len(set(expected_ids)):
         raise JevConfigurationError("question specs contain duplicate IDs")
 
+    _validate_raw_answer_ids(response, expected_ids)
     answers = _response_field(response, "answers")
-    if not isinstance(answers, Mapping):
-        raise JevResponseError("System One response answers must be a mapping")
-    returned_ids = set(answers)
-    expected_id_set = set(expected_ids)
-    if returned_ids != expected_id_set:
-        missing = tuple(question_id for question_id in expected_ids if question_id not in returned_ids)
-        extra = tuple(question_id for question_id in answers if question_id not in expected_id_set)
-        details: list[str] = []
-        if missing:
-            details.append(f"missing question IDs {missing!r}")
-        if extra:
-            details.append(f"unexpected question IDs {extra!r}")
-        raise JevResponseError("System One response ID mismatch: " + "; ".join(details))
+    _validate_answer_ids(answers, expected_ids)
 
     model = _response_field(response, "model")
     if not isinstance(model, str) or not model:
@@ -144,7 +135,7 @@ def validate_response(
         answer = answers[spec.question_id]
         answer_kind = _response_field(answer, "type")
         if answer_kind != spec.kind:
-            raise _answer_error(spec, f"expected answer type {spec.kind!r}, received {answer_kind!r}")
+            raise _answer_error(spec, f"expected answer type {spec.kind!r}")
         if spec.kind == "noul":
             canonical_answers.append(_validate_noul_answer(spec, answer))
         elif spec.kind == "choice":
@@ -169,6 +160,53 @@ def validate_response(
                 warnings.append(warning)
 
     return CanonicalResponse(model=model, answers=tuple(canonical_answers), usage=usage, warnings=tuple(warnings))
+
+
+def _validate_answer_ids(answers: Any, expected_ids: tuple[str, ...]) -> None:
+    """Check exact IDs without echoing any provider-controlled keys."""
+
+    if not isinstance(answers, Mapping):
+        raise JevResponseError("System One response answers must be a mapping")
+    returned_ids = set(answers)
+    expected_id_set = set(expected_ids)
+    if returned_ids != expected_id_set:
+        missing = tuple(question_id for question_id in expected_ids if question_id not in returned_ids)
+        extra_count = len(returned_ids - expected_id_set)
+        details: list[str] = []
+        if missing:
+            details.append(f"missing question IDs {missing!r}")
+        if extra_count:
+            details.append(f"{extra_count} unexpected question ID(s)")
+        raise JevResponseError("System One response ID mismatch: " + "; ".join(details))
+
+
+def _validate_raw_answer_ids(response: Any, expected_ids: tuple[str, ...]) -> None:
+    """Catch answers the SDK drops for forward compatibility, when raw data exists.
+
+    Directly constructed SDK models and structural clients need no HTTP object.
+    Raw payloads are inspected transiently and never copied to canonical results.
+    """
+
+    try:
+        raw = getattr(response, "raw_http_response", None)
+    except TypeSafeError:
+        # Official SDK models constructed in memory have no originating HTTP
+        # response and explicitly raise TypeSafeError from this property.
+        return
+    if raw is None:
+        return
+    failed = False
+    payload: Any = None
+    try:
+        payload = raw.json()
+    except Exception:
+        failed = True
+    if failed:
+        # Raise after leaving the handler so decoder diagnostics are not retained.
+        raise JevResponseError("System One raw response could not be inspected")
+    if not isinstance(payload, Mapping):
+        raise JevResponseError("System One raw response must be a mapping")
+    _validate_answer_ids(payload.get("answers"), expected_ids)
 
 
 def _validate_optional_instructions(question_id: str, question: Any) -> None:

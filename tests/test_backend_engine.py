@@ -55,7 +55,9 @@ def test_execution_is_ordered_and_packs_all_questions_per_state() -> None:
 
     responses = execute_system_one(states, questions, backend=backend, model="jev-pinned")
 
-    assert responses == (first, second)
+    assert [response.model for response in responses] == ["jev-test-a", "jev-test-b"]
+    assert [response.answer_for("relevant").probability for response in responses] == [0.2, 0.8]
+    assert all(response.usage.request_count == 1 for response in responses)
     assert len(factory.calls) == 1
     assert factory.calls[0].args == ()
     assert factory.calls[0].kwargs == {}

@@ -7,7 +7,7 @@ name = "scikit-jev"
 version = "0.1.0.dev0"
 description = "Probability-preserving scikit-learn estimators for TypeSafe System One and Jev"
 readme = "README.md"
-license = "BSD-3-Clause"
+license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.10"
 authors = [{ name = "scikit-jev contributors" }]

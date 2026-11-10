@@ -1,6 +1,6 @@
 # scikit-jev
 
-> Status: pre-alpha functional MVP, 2026-11-09
+> Status: pre-alpha functional MVP, 2026-11-10
 
 `scikit-jev` is a scikit-learn integration for TypeSafe System One and Jev. It
 turns typed, probabilistic answers about text or structured JSON into stable
@@ -36,6 +36,21 @@ Install the current source checkout and its test dependencies with:
 uv sync --extra test
 ```
 
+Try the credential-free example from a source checkout before configuring a
+remote provider:
+
+```console
+python -m pip install .
+python examples/offline_workflow.py
+```
+
+It shows a mixed Noul/Choice/Score transformer, a logistic-regression pipeline,
+named features, immutable result metadata, and logical call counts. The example
+uses hand-authored responses for synthetic support messages: no API key, network
+inference, or billing, and no claim of semantic-model accuracy. It prints a
+`[2, 6]` evaluation feature shape, zero calls for `fit`, eight calls for pipeline
+training, and two calls for evaluation; unknown token counts stay `null`.
+
 Set `TYPESAFE_API_KEY` in the process environment when using the default
 `TypeSafeBackend`. Credentials are resolved lazily by the official SDK; they are
 not estimator parameters.
@@ -56,7 +71,7 @@ features = JevTransformer(
         ),
     },
     score_encoding="probabilities",
-    model="jev-1.13.0",
+    model="jev-latest",  # Moving alias; inspect result.resolved_models after inference.
 )
 
 pipeline = make_pipeline(features, HistGradientBoostingClassifier())
@@ -67,8 +82,9 @@ predictions = pipeline.predict(test_states)
 `fit()` is intentionally network-free. `fit_transform()`, `transform()`,
 `predict()`, and `predict_proba()` perform remote inference.
 
-One input sample produces one System One request containing every declared
-question. Consequently, `Pipeline.fit()` normally performs remote inference:
+Each evaluated sample makes one logical `system_one` call containing every
+declared question; SDK retries may create multiple HTTP attempts. Consequently,
+`Pipeline.fit()` normally performs remote inference:
 scikit-learn calls the transformer's `fit_transform()` to obtain training
 features. Cross-validation and grid search repeat those paid calls.
 
@@ -87,7 +103,7 @@ The implemented public estimators are:
 
 - `JevTransformer` for mixed Noul, Choice, and Score feature schemas
 - `JevNoulClassifier` for binary probabilities and thresholded predictions
-- `JevChoiceClassifier` for declaration-ordered multiclass probabilities
+- `JevChoiceClassifier` for multiclass probabilities in sorted `classes_` order
 - `JevScoreRegressor` for probability-weighted scores
 - `TypeSafeBackend` for lazy, clone-safe official SDK access
 
@@ -97,6 +113,37 @@ or failed response. Input states are sent to the configured remote backend durin
 inference; review that backend's data-handling terms before using sensitive data.
 Provider exceptions are replaced with coordinate-only errors and are not chained,
 because provider bodies and tracebacks may contain private state or credentials.
+
+## Contracts and current limits
+
+Transformer features and canonical answer distributions follow declared question,
+label, and rubric order. Classifiers instead sort `classes_` and align every
+`predict_proba` and `evaluate().values` column to that order, as sklearn expects.
+Choice ties select the first class in sorted order. Noul thresholds always apply
+to the configured positive label, even when that label sorts first.
+
+Each response is validated before sending the next sample. Invalid distributions,
+missing or extra answers, and inconsistent answer types or scalars raise an
+indexed error. When an SDK response exposes its raw HTTP response, the original
+answer IDs are also checked, including unknown answer types dropped by SDK
+decoding. Structural clients without raw metadata can only be checked against
+the answers they expose. Raw HTTP payloads are not retained in canonical results.
+
+Ordinary library response errors report declared IDs, fixed field descriptions,
+and counts instead of arbitrary response keys or values. These guarantees cover
+library errors and canonical results, not third-party logging or arbitrary custom
+client behavior; the SDK can log details during decoding before validation runs.
+
+Model aliases may change. Recording a resolved model version does not establish
+that the service accepts it as a request model or guarantees replay. The current
+probability-sum and scalar tolerances are `1e-6`; broader handling of quantized
+probabilities remains an open compatibility question, not a validated live-service
+guarantee. The [architecture](docs/architecture.md) documents the exact contracts
+and links to deterministic regression tests.
+
+The sorted classifier columns change the earlier pre-alpha behavior. Refit
+classifiers created with older source revisions; align any code consuming their
+probability columns to `classes_`. Transformer feature order is unchanged.
 
 ## Development
 
@@ -139,6 +186,6 @@ and evidence. No performance comparison against these projects has been run.
 
 ## License
 
-BSD-3-Clause. See [LICENSE](LICENSE). This is an independent community project;
+MIT. See [LICENSE](LICENSE). This is an independent community project;
 the software license does not grant access to the hosted TypeSafe service or
 rights to third-party models or trademarks.
