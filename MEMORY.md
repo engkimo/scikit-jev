@@ -117,6 +117,13 @@ trademark sign-off, and full clean-environment compatibility-matrix execution.
   suggested) and authorized external publication. MIT was selected for its short
   terms; LICENSE, package metadata, README, and architecture are aligned. Earlier
   published revisions retain their historical BSD-3-Clause license.
+- Publication was verified on GitHub main at
+  `4d7248bc5da6c8e2406bde4d31ec85197b44c650`: MIT licensing, the contract corrections,
+  regression tests, and the offline example are public. Wheel/sdist license
+  metadata and a clean-wheel installation of the offline demo were verified.
+  GitHub Actions run `42742517598` passed all ten jobs, including Linux Python
+  3.10-3.14, minimum sklearn, macOS/Windows smoke tests, lint, and packaging.
+  PyPI publication and social announcements are separate work.
 - GitHub source publication is separate from a stable v0.1 or PyPI release;
   the package remains pre-alpha and has not been uploaded to PyPI.
 - The 2026-11-09 review found `jaketimothy/sklearn-decision`, a direct overlap:

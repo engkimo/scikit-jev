@@ -34,6 +34,14 @@ requested simpler permissive licensing and authorized external publication;
 the current source uses MIT. Source publication is not a PyPI release or
 evidence of production readiness.
 
+The MIT source, contract corrections, tests, and offline example were published
+to GitHub main on 2026-11-10 at
+`4d7248bc5da6c8e2406bde4d31ec85197b44c650`. The wheel/sdist license metadata and
+the demo from a clean wheel install were checked. This is not a PyPI upload or a
+social announcement; X account selection remains pending. GitHub Actions run
+`42742517598` passed all ten jobs for the code commit: Python 3.10-3.14,
+minimum sklearn, macOS/Windows, lint/type checks, and packaging.
+
 ## Next cycle: contract corrections, useful demo, and adoption
 
 The user selected the contract/evaluation/reproducibility direction on
